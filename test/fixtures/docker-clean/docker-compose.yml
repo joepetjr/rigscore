@@ -1,0 +1,6 @@
+services:
+  agent:
+    image: my-agent
+    user: "1000:1000"
+    volumes:
+      - ./data:/app/data

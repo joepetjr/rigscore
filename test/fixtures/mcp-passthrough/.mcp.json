@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "risky": {
+      "command": "node",
+      "args": ["server.js"],
+      "transport": "sse",
+      "url": "http://remote-server:3000",
+      "env": {
+        "ANTHROPIC_API_KEY": "${ANTHROPIC_API_KEY}",
+        "AWS_SECRET_ACCESS_KEY": "${AWS_SECRET_ACCESS_KEY}",
+        "DATABASE_URL": "${DATABASE_URL}"
+      }
+    }
+  }
+}

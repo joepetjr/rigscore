@@ -1,0 +1,117 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { calculateCheckScore } from '../scoring.js';
+
+async function fileExists(p) {
+  try {
+    await fs.promises.access(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function readJsonSafe(p) {
+  try {
+    const content = await fs.promises.readFile(p, 'utf-8');
+    return JSON.parse(content);
+  } catch {
+    return null;
+  }
+}
+
+export default {
+  id: 'git-hooks',
+  name: 'Git hooks',
+  category: 'process',
+  weight: 10,
+
+  async run(context) {
+    const { cwd } = context;
+    const findings = [];
+
+    const hasGitDir = await fileExists(path.join(cwd, '.git'));
+    if (!hasGitDir) {
+      findings.push({
+        severity: 'info',
+        title: 'Not a git repository',
+        detail: 'No .git directory found. Git hooks check skipped.',
+      });
+      return { score: 100, findings };
+    }
+
+    let hasHooks = false;
+
+    // Check native git hooks
+    const preCommit = path.join(cwd, '.git', 'hooks', 'pre-commit');
+    const prePush = path.join(cwd, '.git', 'hooks', 'pre-push');
+
+    if (await fileExists(preCommit)) {
+      hasHooks = true;
+      findings.push({
+        severity: 'pass',
+        title: 'Pre-commit hook installed',
+      });
+    }
+
+    if (await fileExists(prePush)) {
+      hasHooks = true;
+      findings.push({
+        severity: 'pass',
+        title: 'Pre-push hook installed',
+      });
+    }
+
+    // Check husky
+    const huskyDir = path.join(cwd, '.husky');
+    if (await fileExists(huskyDir)) {
+      hasHooks = true;
+      findings.push({
+        severity: 'pass',
+        title: 'Husky hook manager installed',
+      });
+    }
+
+    // Check lefthook
+    const lefthookYml = path.join(cwd, 'lefthook.yml');
+    const lefthookYaml = path.join(cwd, 'lefthook.yaml');
+    if (await fileExists(lefthookYml) || await fileExists(lefthookYaml)) {
+      hasHooks = true;
+      findings.push({
+        severity: 'pass',
+        title: 'Lefthook hook manager configured',
+      });
+    }
+
+    // Check package.json for husky/lint-staged
+    const pkg = await readJsonSafe(path.join(cwd, 'package.json'));
+    if (pkg) {
+      const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+      if (deps.husky || deps['lint-staged']) {
+        hasHooks = true;
+        // Don't duplicate if husky dir already found
+        if (!await fileExists(huskyDir)) {
+          findings.push({
+            severity: 'pass',
+            title: 'Husky/lint-staged in package.json dependencies',
+          });
+        }
+      }
+    }
+
+    if (!hasHooks) {
+      findings.push({
+        severity: 'warning',
+        title: 'No pre-commit hooks installed',
+        detail: 'Without commit hooks, secrets and governance file changes can be committed unchecked.',
+        remediation: 'Install pre-commit hooks with Husky or lefthook to enforce checks before commits.',
+        learnMore: 'https://headlessmode.com/blog/git-hooks-for-ai',
+      });
+    }
+
+    return {
+      score: calculateCheckScore(findings),
+      findings,
+    };
+  },
+};
