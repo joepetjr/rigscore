@@ -20,6 +20,14 @@ async function readJsonSafe(p) {
   }
 }
 
+async function readFileSafe(p) {
+  try {
+    return await fs.promises.readFile(p, 'utf-8');
+  } catch {
+    return null;
+  }
+}
+
 export default {
   id: 'git-hooks',
   name: 'Git hooks',
@@ -27,7 +35,7 @@ export default {
   weight: 10,
 
   async run(context) {
-    const { cwd } = context;
+    const { cwd, homedir, config } = context;
     const findings = [];
 
     const hasGitDir = await fileExists(path.join(cwd, '.git'));
@@ -94,6 +102,47 @@ export default {
           findings.push({
             severity: 'pass',
             title: 'Husky/lint-staged in package.json dependencies',
+          });
+        }
+      }
+    }
+
+    // Check Claude Code hooks in settings
+    const claudeSettingsPaths = [
+      path.join(homedir, '.claude', 'settings.json'),
+      path.join(cwd, '.claude', 'settings.json'),
+    ];
+    for (const settingsPath of claudeSettingsPaths) {
+      const settings = await readJsonSafe(settingsPath);
+      if (settings?.hooks) {
+        hasHooks = true;
+        findings.push({
+          severity: 'pass',
+          title: 'Claude Code hooks configured',
+          detail: `Hooks found in ${path.relative(cwd, settingsPath) || settingsPath}.`,
+        });
+        break;
+      }
+    }
+
+    // Check pushurl guards in .git/config
+    const gitConfig = await readFileSafe(path.join(cwd, '.git', 'config'));
+    if (gitConfig && /pushurl\s*=\s*no_push/i.test(gitConfig)) {
+      hasHooks = true;
+      findings.push({
+        severity: 'pass',
+        title: 'Push URL guard detected in .git/config',
+      });
+    }
+
+    // Check external hook directories from config
+    if (config?.paths?.hookDirs) {
+      for (const hookDir of config.paths.hookDirs) {
+        if (await fileExists(hookDir)) {
+          hasHooks = true;
+          findings.push({
+            severity: 'pass',
+            title: `External hook directory found: ${hookDir}`,
           });
         }
       }

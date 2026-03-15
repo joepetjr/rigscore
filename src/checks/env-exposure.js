@@ -42,6 +42,14 @@ async function readFileSafe(p) {
   }
 }
 
+async function statSafe(p) {
+  try {
+    return await fs.promises.stat(p);
+  } catch {
+    return null;
+  }
+}
+
 async function isInGitignore(cwd) {
   const gitignorePath = path.join(cwd, '.gitignore');
   const content = await readFileSafe(gitignorePath);
@@ -85,6 +93,35 @@ export default {
           title: '.env file properly gitignored',
         });
       }
+
+      // Check .env file permissions (Linux only)
+      if (process.platform !== 'win32') {
+        for (const envFile of envFiles) {
+          const envStat = await statSafe(path.join(cwd, envFile));
+          if (envStat) {
+            const mode = envStat.mode & 0o777;
+            // World-readable check: "others" read bit
+            if (mode & 0o004) {
+              findings.push({
+                severity: 'warning',
+                title: `${envFile} is world-readable`,
+                detail: `${envFile} has mode ${mode.toString(8)}. Secrets files should not be world-readable.`,
+                remediation: `Run: chmod 600 ${envFile}`,
+              });
+            }
+          }
+        }
+      }
+    }
+
+    // Detect SOPS
+    const sopsConfig = await fileExists(path.join(cwd, '.sops.yaml'));
+    if (sopsConfig) {
+      findings.push({
+        severity: 'pass',
+        title: 'Secrets managed by SOPS',
+        detail: '.sops.yaml found — secrets are encrypted at rest.',
+      });
     }
 
     // Scan config files for hardcoded keys
@@ -109,7 +146,7 @@ export default {
       }
     }
 
-    if (envFiles.length === 0 && !hardcodedFound) {
+    if (envFiles.length === 0 && !hardcodedFound && !sopsConfig) {
       findings.push({
         severity: 'pass',
         title: 'No exposed secrets detected',

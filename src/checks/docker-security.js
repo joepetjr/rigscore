@@ -21,17 +21,25 @@ export default {
   weight: 15,
 
   async run(context) {
-    const { cwd } = context;
+    const { cwd, config } = context;
     const findings = [];
 
-    // Find compose files
+    // Collect compose file paths: defaults + config-specified
+    const composeCandidates = COMPOSE_PATTERNS.map((p) => path.join(cwd, p));
+    if (config?.paths?.dockerCompose) {
+      for (const p of config.paths.dockerCompose) {
+        composeCandidates.push(p);
+      }
+    }
+
+    // Find first compose file
     let composeContent = null;
     let composeFile = null;
-    for (const pattern of COMPOSE_PATTERNS) {
-      const content = await readFileSafe(path.join(cwd, pattern));
+    for (const candidate of composeCandidates) {
+      const content = await readFileSafe(candidate);
       if (content) {
         composeContent = content;
-        composeFile = pattern;
+        composeFile = path.basename(candidate);
         break;
       }
     }
@@ -116,6 +124,52 @@ export default {
               });
             }
           }
+        }
+
+        // Check cap_drop
+        const capDrop = service.cap_drop || [];
+        if (!capDrop.includes('ALL')) {
+          findings.push({
+            severity: 'warning',
+            title: `Container "${name}" missing cap_drop: [ALL]`,
+            detail: 'Without dropping all capabilities, the container retains default Linux capabilities.',
+            remediation: 'Add cap_drop: [ALL] and only add back specific capabilities needed.',
+            learnMore: 'https://headlessmode.com/blog/docker-isolation',
+          });
+        }
+
+        // Check security_opt for no-new-privileges
+        const securityOpt = service.security_opt || [];
+        if (!securityOpt.includes('no-new-privileges')) {
+          findings.push({
+            severity: 'info',
+            title: `Container "${name}" missing no-new-privileges`,
+            detail: 'Without no-new-privileges, processes inside the container can escalate privileges.',
+            remediation: 'Add security_opt: [no-new-privileges] to the service.',
+          });
+        }
+
+        // Check for user directive
+        if (!service.user) {
+          findings.push({
+            severity: 'warning',
+            title: `Container "${name}" has no user directive`,
+            detail: 'Container will run as root by default.',
+            remediation: 'Add a user directive to run as a non-root user.',
+            learnMore: 'https://headlessmode.com/blog/docker-isolation',
+          });
+        }
+
+        // Check memory limits
+        const hasMemLimit = service.mem_limit ||
+          service.deploy?.resources?.limits?.memory;
+        if (!hasMemLimit) {
+          findings.push({
+            severity: 'info',
+            title: `Container "${name}" has no memory limit`,
+            detail: 'Without memory limits, a runaway container can exhaust host memory.',
+            remediation: 'Add mem_limit or deploy.resources.limits.memory to the service.',
+          });
         }
       }
     }

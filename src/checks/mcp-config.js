@@ -21,6 +21,17 @@ const SENSITIVE_ENV_KEYS = [
   'SLACK_TOKEN',
 ];
 
+const DEFAULT_SAFE_HOSTS = ['127.0.0.1', 'localhost', '::1'];
+
+function extractHost(urlOrTransport) {
+  try {
+    const url = new URL(urlOrTransport);
+    return url.hostname;
+  } catch {
+    return null;
+  }
+}
+
 export default {
   id: 'mcp-config',
   name: 'MCP server configuration',
@@ -28,8 +39,9 @@ export default {
   weight: 15,
 
   async run(context) {
-    const { cwd, homedir } = context;
+    const { cwd, homedir, config } = context;
     const findings = [];
+    const safeHosts = config?.network?.safeHosts || DEFAULT_SAFE_HOSTS;
 
     // Locations to scan for MCP config
     const configPaths = [
@@ -39,27 +51,46 @@ export default {
       path.join(homedir, '.cursor', 'mcp.json'),
     ];
 
+    // Add config-specified paths
+    if (config?.paths?.mcpConfig) {
+      for (const p of config.paths.mcpConfig) {
+        configPaths.push(p);
+      }
+    }
+
     let foundAny = false;
 
     for (const configPath of configPaths) {
-      const config = await readJsonSafe(configPath);
-      if (!config) continue;
+      const mcpConfig = await readJsonSafe(configPath);
+      if (!mcpConfig) continue;
 
       foundAny = true;
-      const servers = config.mcpServers || {};
+      const servers = mcpConfig.mcpServers || {};
       const relPath = path.relative(cwd, configPath) || configPath;
 
       for (const [name, server] of Object.entries(servers)) {
         // Check transport type
         const transport = server.transport || 'stdio';
         if (transport === 'sse' || transport === 'http' || server.url) {
-          findings.push({
-            severity: 'warning',
-            title: `MCP server "${name}" uses network transport`,
-            detail: `Server uses ${transport || 'network'} transport in ${relPath}. Network-based MCP servers have a larger attack surface than stdio.`,
-            remediation: 'Prefer stdio transport for local MCP servers. If network transport is required, ensure authentication and TLS.',
-            learnMore: 'https://headlessmode.com/blog/mcp-permissions',
-          });
+          const targetUrl = server.url || '';
+          const host = extractHost(targetUrl);
+          const isLocal = host && safeHosts.includes(host);
+
+          if (isLocal) {
+            findings.push({
+              severity: 'info',
+              title: `MCP server "${name}" is a localhost server`,
+              detail: `Server uses ${transport || 'network'} transport targeting ${host} in ${relPath}.`,
+            });
+          } else {
+            findings.push({
+              severity: 'warning',
+              title: `MCP server "${name}" uses network transport`,
+              detail: `Server uses ${transport || 'network'} transport in ${relPath}. Network-based MCP servers have a larger attack surface than stdio.`,
+              remediation: 'Prefer stdio transport for local MCP servers. If network transport is required, ensure authentication and TLS.',
+              learnMore: 'https://headlessmode.com/blog/mcp-permissions',
+            });
+          }
         }
 
         // Check for root filesystem access in args

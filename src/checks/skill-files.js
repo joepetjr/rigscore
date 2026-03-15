@@ -10,6 +10,14 @@ async function readFileSafe(p) {
   }
 }
 
+async function statSafe(p) {
+  try {
+    return await fs.promises.stat(p);
+  } catch {
+    return null;
+  }
+}
+
 const SKILL_FILE_PATHS = [
   '.cursorrules',
   '.windsurfrules',
@@ -49,7 +57,7 @@ export default {
   weight: 10,
 
   async run(context) {
-    const { cwd } = context;
+    const { cwd, config } = context;
     const findings = [];
     const filesToScan = [];
 
@@ -58,7 +66,17 @@ export default {
       const fullPath = path.join(cwd, relPath);
       const content = await readFileSafe(fullPath);
       if (content) {
-        filesToScan.push({ path: relPath, content });
+        filesToScan.push({ path: relPath, fullPath, content });
+      }
+    }
+
+    // Add config-specified skill files
+    if (config?.paths?.skillFiles) {
+      for (const p of config.paths.skillFiles) {
+        const content = await readFileSafe(p);
+        if (content) {
+          filesToScan.push({ path: p, fullPath: p, content });
+        }
       }
     }
 
@@ -72,7 +90,7 @@ export default {
           const fullPath = path.join(dirPath, entry);
           const content = await readFileSafe(fullPath);
           if (content) {
-            filesToScan.push({ path: path.join(dir, entry), content });
+            filesToScan.push({ path: path.join(dir, entry), fullPath, content });
           }
         }
       } catch {
@@ -139,6 +157,23 @@ export default {
           remediation: 'Decode and review the content. Remove if not needed.',
           learnMore: 'https://headlessmode.com/blog/skill-file-injection',
         });
+      }
+
+      // Check file permissions (Linux only)
+      if (process.platform !== 'win32') {
+        const fileStat = await statSafe(file.fullPath);
+        if (fileStat) {
+          const mode = fileStat.mode & 0o777;
+          // World-writable check: "others" write bit
+          if (mode & 0o002) {
+            findings.push({
+              severity: 'warning',
+              title: `Skill file ${file.path} is world-writable`,
+              detail: `${file.path} has mode ${mode.toString(8)}. World-writable skill files can be tampered with.`,
+              remediation: `Run: chmod 644 ${file.path}`,
+            });
+          }
+        }
       }
     }
 

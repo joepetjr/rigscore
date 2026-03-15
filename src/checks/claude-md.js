@@ -47,19 +47,33 @@ export default {
   weight: 20,
 
   async run(context) {
-    const { cwd, homedir } = context;
+    const { cwd, homedir, config } = context;
     const findings = [];
 
-    // Check project-level CLAUDE.md
-    const projectPath = path.join(cwd, 'CLAUDE.md');
-    const globalPath = path.join(homedir, '.claude', 'CLAUDE.md');
+    // Collect all candidate paths
+    const candidatePaths = [
+      path.join(cwd, 'CLAUDE.md'),
+      path.join(homedir, '.claude', 'CLAUDE.md'),
+      path.join(homedir, 'CLAUDE.md'),
+    ];
 
-    const projectContent = await readFileSafe(projectPath);
-    const globalContent = await readFileSafe(globalPath);
+    // Add config-specified paths
+    if (config?.paths?.claudeMd) {
+      for (const p of config.paths.claudeMd) {
+        candidatePaths.push(p);
+      }
+    }
 
-    const content = projectContent || globalContent;
+    // Read all files, collect contents
+    const contents = [];
+    for (const p of candidatePaths) {
+      const content = await readFileSafe(p);
+      if (content) {
+        contents.push(content);
+      }
+    }
 
-    if (!content) {
+    if (contents.length === 0) {
       findings.push({
         severity: 'critical',
         title: 'No CLAUDE.md found',
@@ -70,9 +84,19 @@ export default {
       return { score: calculateCheckScore(findings), findings };
     }
 
-    const lines = content.split('\n');
+    // Union content for quality checks
+    const combined = contents.join('\n');
+    const longestContent = contents.reduce((a, b) => (a.length > b.length ? a : b));
+    const lines = longestContent.split('\n');
 
-    // Check content length
+    if (contents.length > 1) {
+      findings.push({
+        severity: 'pass',
+        title: 'Multiple governance layers detected',
+      });
+    }
+
+    // Check content length (based on longest file)
     if (lines.length < LENGTH_THRESHOLD) {
       findings.push({
         severity: 'warning',
@@ -83,12 +107,9 @@ export default {
       });
     }
 
-    // Check quality patterns
-    let qualityScore = 0;
+    // Check quality patterns against combined content
     for (const check of QUALITY_CHECKS) {
-      if (check.pattern.test(content)) {
-        qualityScore += check.points;
-      } else {
+      if (!check.pattern.test(combined)) {
         findings.push({
           severity: 'warning',
           title: `CLAUDE.md missing: ${check.name}`,

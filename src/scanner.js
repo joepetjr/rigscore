@@ -1,5 +1,5 @@
 import { loadChecks } from './checks/index.js';
-import { calculateCheckScore, calculateOverallScore } from './scoring.js';
+import { calculateOverallScore } from './scoring.js';
 import { loadConfig } from './config.js';
 
 /**
