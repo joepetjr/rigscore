@@ -1,5 +1,6 @@
 import { loadChecks } from './checks/index.js';
 import { calculateCheckScore, calculateOverallScore } from './scoring.js';
+import { loadConfig } from './config.js';
 
 /**
  * Run an array of checks against a context, collect results.
@@ -55,10 +56,11 @@ export async function runChecks(checks, context, options = {}) {
  */
 export async function scan(options = {}) {
   const checks = await loadChecks();
-  const context = {
-    cwd: options.cwd || process.cwd(),
-    homedir: options.homedir || (await import('node:os')).homedir(),
-  };
+  const cwd = options.cwd || process.cwd();
+  const homedir = options.homedir || (await import('node:os')).homedir();
+  const config = await loadConfig(cwd, homedir);
+
+  const context = { cwd, homedir, config };
 
   const results = await runChecks(checks, context, options);
 

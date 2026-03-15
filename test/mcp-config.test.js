@@ -9,7 +9,7 @@ const fixture = (name) => path.join(__dirname, 'fixtures', name);
 describe('mcp-config check', () => {
   it('has required shape', () => {
     expect(check.id).toBe('mcp-config');
-    expect(check.weight).toBe(25);
+    expect(check.weight).toBe(15);
   });
 
   it('PASS with clean stdio config', async () => {

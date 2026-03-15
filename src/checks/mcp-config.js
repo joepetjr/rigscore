@@ -25,7 +25,7 @@ export default {
   id: 'mcp-config',
   name: 'MCP server configuration',
   category: 'supply-chain',
-  weight: 25,
+  weight: 15,
 
   async run(context) {
     const { cwd, homedir } = context;

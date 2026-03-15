@@ -16,11 +16,12 @@ export const CATEGORY = {
 // Weights must sum to 100
 export const WEIGHTS = {
   'claude-md': 20,
-  'mcp-config': 25,
+  'mcp-config': 15,
   'env-exposure': 20,
   'docker-security': 15,
   'git-hooks': 10,
   'skill-files': 10,
+  'permissions-hygiene': 10,
 };
 
 // Severity multipliers for score calculation
