@@ -7,6 +7,7 @@ import { scanLineForSecrets } from '../utils.js';
 const SKIP_DIRS = new Set([
   'node_modules', '.git', 'vendor', 'dist', 'build', '__pycache__',
   'venv', '.venv', 'coverage', '.next', '.nuxt', 'out',
+  'test', 'tests', '__tests__', '__mocks__',
 ]);
 
 const INCLUDE_EXTENSIONS = new Set([
@@ -15,7 +16,11 @@ const INCLUDE_EXTENSIONS = new Set([
 ]);
 
 // .env.* files are included (e.g. .env.production, .env.local)
+// Skip test/spec files — they legitimately contain example secrets for pattern testing
+const TEST_FILE_RE = /\.(test|spec)\./;
+
 function shouldInclude(filename) {
+  if (TEST_FILE_RE.test(filename)) return false;
   const ext = path.extname(filename);
   if (INCLUDE_EXTENSIONS.has(ext)) return true;
   if (filename.startsWith('.env.')) return true;

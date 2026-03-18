@@ -119,6 +119,37 @@ describe('deep-secrets check', () => {
     }
   });
 
+  it('skips test directories (test/, tests/, __tests__/)', async () => {
+    const tmpDir = makeTmpDir();
+    try {
+      const key = ['sk', 'ant', 'abcdefghij1234567890'].join('-');
+      for (const dir of ['test', 'tests', '__tests__']) {
+        fs.mkdirSync(path.join(tmpDir, dir), { recursive: true });
+        fs.writeFileSync(path.join(tmpDir, dir, 'patterns.js'), `const key = "${key}";`);
+      }
+      fs.writeFileSync(path.join(tmpDir, 'clean.js'), 'const x = 1;');
+      const result = await check.run({ cwd: tmpDir, deep: true, config: defaultConfig });
+      expect(result.score).toBe(100);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true });
+    }
+  });
+
+  it('skips .test.js and .spec.js files in source directories', async () => {
+    const tmpDir = makeTmpDir();
+    try {
+      const key = ['sk', 'ant', 'abcdefghij1234567890'].join('-');
+      fs.mkdirSync(path.join(tmpDir, 'src'), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, 'src', 'api.test.js'), `const key = "${key}";`);
+      fs.writeFileSync(path.join(tmpDir, 'src', 'api.spec.ts'), `const key = "${key}";`);
+      fs.writeFileSync(path.join(tmpDir, 'src', 'api.js'), 'const x = 1;');
+      const result = await check.run({ cwd: tmpDir, deep: true, config: defaultConfig });
+      expect(result.score).toBe(100);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true });
+    }
+  });
+
   it('includes .env.production files', async () => {
     const tmpDir = makeTmpDir();
     try {
