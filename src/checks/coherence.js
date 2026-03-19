@@ -10,7 +10,7 @@ export default {
   id: 'coherence',
   name: 'Cross-config coherence',
   category: 'governance',
-  weight: 15,
+  weight: 18,
 
   async run(context) {
     const { priorResults } = context;
